@@ -1,2 +1,2 @@
 # yacs-rescan
-Crappy minecraft server rescanner.
+Crappy minecraft server rescanner made for private use
