@@ -207,5 +207,6 @@ func main() {
 		go scanAndInsert(serverres.ServerIP, sem, &wg, &serverres)
 	}
 	wg.Wait()
+	coll.BulkWrite(context.TODO(), toupdate, options.BulkWrite().SetOrdered(false))
 
 }
