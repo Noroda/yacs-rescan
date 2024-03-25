@@ -80,7 +80,9 @@ type ServerDBbutMf struct {
 
 }
 
-func scanAndInsert(ip string, sem *semaphore.Weighted, wg *sync.WaitGroup, server *ServerDB, client *mongo.Client) {
+var toupdate []mongo.WriteModel
+
+func scanAndInsert(ip string, sem *semaphore.Weighted, wg *sync.WaitGroup, server *ServerDB) {
 		defer wg.Done()
 		defer sem.Release(1)
 		defer func() {
@@ -88,12 +90,11 @@ func scanAndInsert(ip string, sem *semaphore.Weighted, wg *sync.WaitGroup, serve
 				fmt.Println("Recovered!")
 			}
 		}()
-
-		db := client.Database("database").Collection("collection")
 		resp, delay, err := bot.PingAndListTimeout(fmt.Sprint(ip), 5*time.Second)
 		if err != nil {
 			fmt.Printf("Ping and list server fail: %v\n", err)
-			db.UpdateOne(context.TODO(), bson.M{"serverIP": ip}, bson.M{"$set": bson.M{"alive": false}})
+			toupdate = append(toupdate, mongo.NewUpdateOneModel().SetFilter(bson.M{"serverIP": ip}).SetUpdate(bson.M{"$set": bson.M{"alive":false}}))
+
 		}
 		var s status
 		err = json.Unmarshal(resp, &s)
@@ -174,26 +175,22 @@ func scanAndInsert(ip string, sem *semaphore.Weighted, wg *sync.WaitGroup, serve
 					delete(playerMap, player.ID) 
 				}
 			}
+			toupdate = append(toupdate, mongo.NewUpdateOneModel().SetFilter(bson.M{"serverIP": ip}).SetUpdate(bson.M{"$set": serverbutmf}))			
 
-			rep, err := db.UpdateOne(context.TODO(), bson.M{"serverIP": ip}, bson.M{"$set": serverbutmf}, options.Update().SetUpsert(true))
-			if err != nil {
-				fmt.Println(err)
-			}
-			fmt.Println(rep)
-
+			fmt.Println("Server pinged!")
 		}
 	}
 
 func main() {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("<conn uri>"))
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("conn url"))
 	if err != nil {
 		fmt.Println(err)
 	}
-	semThr := flag.Int64("something", 1500, "Max number of concurrent goroutines.")
+	semThr := flag.Int64("threads", 1500, "Max number of concurrent goroutines.")
 	flag.Parse()
 	sem := semaphore.NewWeighted(*semThr)
 
-	coll := client.Database("database").Collection("collection")
+	coll := client.Database("db").Collection("coll")
 	cursor, err := coll.Find(context.TODO(), bson.M{})
 	if err != nil {
 		fmt.Println(err)
@@ -207,7 +204,7 @@ func main() {
 		cursor.Decode(&serverres)
 		wg.Add(1)
 		sem.Acquire(context.Background(), 1)
-		go scanAndInsert(serverres.ServerIP, sem, &wg, &serverres, client)
+		go scanAndInsert(serverres.ServerIP, sem, &wg, &serverres)
 	}
 	wg.Wait()
 
